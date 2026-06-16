@@ -1,15 +1,82 @@
 name: Build Unciv iOS IPA
 
 on:
-  workflow_dispatch: # Allows you to manually trigger the build from the Actions tab
+  workflow_dispatch: # Run it manually from your Actions tab
 
 jobs:
   build-ios:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Your Repository
         uses: actions/checkout@v4
+
+      - name: Inject Missing iOS Module
+        run: |
+          echo "Re-injecting the :ios project structure..."
+          
+          # 1. Create the missing ios directory structure
+          mkdir -p ios/src/com/unciv/app
+          
+          # 2. Force Gradle to recognize the :ios module in settings.gradle.kts
+          if ! grep -q "'::ios'" settings.gradle.kts; then
+            echo -e "\ninclude(\":ios\")" >> settings.gradle.kts
+          fi
+
+          # 3. Create a skeleton build.gradle for the iOS module targeting MobiVM/RoboVM
+          cat << 'EOF' > ios/build.gradle
+          buildscript {
+              repositories {
+                  mavenCentral()
+                  google()
+              }
+              dependencies {
+                  classpath 'com.mobidevelop.robovm:robovm-gradle-plugin:2.3.20'
+              }
+          }
+          apply plugin: 'kotlin'
+          apply plugin: 'robovm'
+          
+          dependencies {
+              implementation project(':core')
+              implementation "com.badlogicgames.gdx:gdx-backend-robovm:1.12.1"
+              implementation "com.badlogicgames.gdx:gdx-platform:1.12.1:natives-ios"
+          }
+          
+          ext {
+              mainClassName = "com.unciv.app.IOSLauncher"
+          }
+          
+          robovm {
+              iosSignIdentity = ""
+              iosProvisioningProfile = ""
+              iosSkipSigning = true
+              archs = "thumb64"
+          }
+          EOF
+
+          # 4. Create the core launcher entrypoint so RoboVM can find the Main game class
+          cat << 'EOF' > ios/src/com/unciv/app/IOSLauncher.kt
+          package com.unciv.app
+          import org.robovm.apple.foundation.NSAutoreleasePool
+          import org.robovm.apple.uikit.UIApplication
+          import com.badlogicgames.gdx.backends.iosrobovm.IOSApplication
+          import com.badlogicgames.gdx.backends.iosrobovm.IOSApplicationConfiguration
+          import com.unciv.UncivGame
+
+          class IOSLauncher : IOSApplication.Delegate() {
+              override fun createApplication(): IOSApplication {
+                  val config = IOSApplicationConfiguration()
+                  return IOSApplication(UncivGame.main, config)
+              }
+          }
+
+          fun main(args: Array<String>) {
+              val pool = NSAutoreleasePool()
+              UIApplication.main(args, null, IOSLauncher::class.java)
+              pool.close()
+          }
+          EOF
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -22,20 +89,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Compile and Package iOS IPA
-        run: ./gradlew :ios:createIpa
+        run: ./gradlew :ios:createIPA
         env:
           GRADLE_OPTS: "-Xmx4g"
 
       - name: Locate and Rename IPA
         run: |
           mkdir -p build/artifacts
-          # Find the generated ipa file from the robovm/ios build directory
-          find ios/build/robovm -name "*.ipa" -exec cp {} build/artifacts/Unciv-Unsigned.ipa \;
-          echo "IPA located and staged successfully."
+          find . -name "*.ipa" -exec cp {} build/artifacts/Unciv-Sideload.ipa \;
+          echo "IPA found and packaged."
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Unciv-iOS-Bundle
-          path: build/artifacts/Unciv-Unsigned.ipa
+          name: Unciv-iOS-Sideload
+          path: build/artifacts/Unciv-Sideload.ipa
           retention-days: 7
