@@ -51,7 +51,7 @@ jobs:
               iosSignIdentity = ""
               iosProvisioningProfile = ""
               iosSkipSigning = true
-              archs = "thumb64"
+              archs = "arm64"
           }
           EOF
 
