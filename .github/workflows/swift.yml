@@ -15,8 +15,8 @@ jobs:
         run: |
           echo "Re-injecting the :ios project structure..."
           
-          # 1. Create the missing ios directory structure
-          mkdir -p ios/src/com/unciv/app
+          # 1. Create the missing ios directory structure (Fixed to standard Gradle source sets)
+          mkdir -p ios/src/main/kotlin/com/unciv/app
           
           # 2. Force Gradle to recognize the :ios module in settings.gradle.kts
           if ! grep -q "'::ios'" settings.gradle.kts; then
@@ -55,8 +55,8 @@ jobs:
           }
           EOF
 
-          # 4. Create the core launcher entrypoint so RoboVM can find the Main game class
-          cat << 'EOF' > ios/src/com/unciv/app/IOSLauncher.kt
+          # 4. Create the core launcher entrypoint (Fixed path)
+          cat << 'EOF' > ios/src/main/kotlin/com/unciv/app/IOSLauncher.kt
           package com.unciv.app
           import org.robovm.apple.foundation.NSAutoreleasePool
           import org.robovm.apple.uikit.UIApplication
